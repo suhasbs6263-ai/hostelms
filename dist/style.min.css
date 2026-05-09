@@ -1,0 +1,31 @@
+body {
+    background-color: #f4f6f9;
+    font-family: Arial, sans-serif;
+}
+
+.card {
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0px 2px 5px rgba(0,0,0,0.1);
+}
+
+h4 {
+    font-weight: bold;
+}
+
+.btn {
+    padding: 8px 15px;
+    border-radius: 5px;
+}
+
+.btn-success {
+    background-color: green;
+    color: white;
+}
+
+.btn-danger {
+    background-color: red;
+    color: white;
+}
