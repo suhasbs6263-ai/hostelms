@@ -1,29 +1,22 @@
 <?php
-session_start();
 require_once('../includes/dbconn.php');
 require_once('../includes/check-login.php');
+require_once('../includes/room-helpers.php');
 check_login('admin');
 
 $portalRole = 'admin';
 $activePage = 'bookings.php';
-$pageHeading = 'Hostel Bookings';
-
-$bookings = [];
-$result = $mysqli->query("SELECT regno, roomno, seater, stayfrom, contactno, emailid, firstName, middleName, lastName FROM registration ORDER BY stayfrom DESC");
-if ($result) {
-    while ($row = $result->fetch_assoc()) {
-        $bookings[] = $row;
-    }
-}
+$pageHeading = 'Room Allocations';
+$allocations = fetch_all_allocations($mysqli);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bookings</title>
+    <title>Allocations</title>
     <link rel="stylesheet" href="../assets/css/styles.min.css">
-    <link rel="stylesheet" href="../assets/css/hostel-custom.css?v=20260402b">
+    <link rel="stylesheet" href="../assets/css/hostel-custom.css?v=20260509a">
 </head>
 <body>
 <div class="page-wrapper" id="main-wrapper" data-layout="vertical" data-sidebar-position="fixed" data-header-position="fixed" data-sidebartype="full">
@@ -36,56 +29,49 @@ if ($result) {
         </header>
         <div class="container-fluid">
             <div class="hostel-page-header">
-                <h3 class="mb-1">Hostel Student Management</h3>
+                <h3 class="mb-1">Hostel Allocations</h3>
+                <p class="mb-0 text-dark">Track pending, allocated, rejected, and completed hostel room requests.</p>
             </div>
             <div class="card content-card">
                 <div class="card-body">
-                    <div class="hostel-datatable" data-page-size="5" data-renumber="true" data-empty-message="No hostel students found">
-                    <div class="table-responsive">
-                        <table class="table align-middle compact-table js-hostel-table">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Reg No.</th>
-                                    <th>Student's Name</th>
-                                    <th>Room No</th>
-                                    <th>Seater</th>
-                                    <th>Staying From</th>
-                                    <th>Contact</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if ($bookings): ?>
-                                <?php foreach ($bookings as $index => $booking): ?>
-                                <tr>
-                                    <td><?php echo $index + 1; ?></td>
-                                    <td><?php echo htmlspecialchars($booking['regno']); ?></td>
-                                    <td><?php echo htmlspecialchars(trim($booking['firstName'] . ' ' . $booking['middleName'] . ' ' . $booking['lastName'])); ?></td>
-                                    <td><?php echo htmlspecialchars($booking['roomno']); ?></td>
-                                    <td><?php echo htmlspecialchars($booking['seater']); ?></td>
-                                    <td><?php echo htmlspecialchars($booking['stayfrom']); ?></td>
-                                    <td><?php echo htmlspecialchars($booking['contactno']); ?></td>
-                                    <td>
-                                        <div class="action-icon-group">
-                                            <a class="action-icon-btn" href="tel:<?php echo htmlspecialchars($booking['contactno']); ?>" title="Call Student">
-                                                <i class="ti ti-phone"></i>
-                                            </a>
-                                            <a class="action-icon-btn" href="mailto:<?php echo rawurlencode($booking['emailid']); ?>" title="Email Student">
-                                                <i class="ti ti-mail"></i>
-                                            </a>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                                <?php else: ?>
-                                <tr class="empty-row">
-                                    <td colspan="8" class="text-center py-4">No hostel students found</td>
-                                </tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
+                    <div class="hostel-datatable" data-page-size="10" data-renumber="true" data-empty-message="No room allocations found">
+                        <div class="table-responsive">
+                            <table class="table align-middle compact-table js-hostel-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Reg No.</th>
+                                        <th>Student</th>
+                                        <th>Assigned Room</th>
+                                        <th>Stay From</th>
+                                        <th>Monthly Fee</th>
+                                        <th>Status</th>
+                                        <th>Updated</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if ($allocations): ?>
+                                    <?php foreach ($allocations as $index => $allocation): ?>
+                                    <tr>
+                                        <td><?php echo $index + 1; ?></td>
+                                        <td><?php echo e($allocation['registration_number']); ?></td>
+                                        <td>
+                                            <div class="fw-semibold"><?php echo e(trim($allocation['first_name'] . ' ' . ($allocation['middle_name'] ?? '') . ' ' . $allocation['last_name'])); ?></div>
+                                            <div class="small text-muted"><?php echo e($allocation['email']); ?></div>
+                                        </td>
+                                        <td><?php echo e($allocation['room_no'] ?? '--'); ?> <?php if (!empty($allocation['room_type'])): ?><span class="text-muted small">(<?php echo e($allocation['room_type']); ?>)</span><?php endif; ?></td>
+                                        <td><?php echo e($allocation['stay_from']); ?></td>
+                                        <td>Rs. <?php echo number_format((float) ($allocation['monthly_fee'] ?? 0), 2); ?></td>
+                                        <td><span class="badge text-bg-<?php echo ($allocation['status'] ?? '') === 'allocated' ? 'success' : (($allocation['status'] ?? '') === 'pending' ? 'warning' : 'secondary'); ?>"><?php echo e(ucfirst((string) $allocation['status'])); ?></span></td>
+                                        <td><?php echo e($allocation['updated_at']); ?></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                    <?php else: ?>
+                                    <tr class="empty-row"><td colspan="8" class="text-center py-4">No room allocations found</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -97,6 +83,6 @@ if ($result) {
 <script src="../assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="../assets/js/sidebarmenu.js"></script>
 <script src="../assets/js/app.min.js"></script>
-<script src="../assets/js/hostel-table.js?v=20260402b"></script>
+<script src="../assets/js/hostel-table.js?v=20260509a"></script>
 </body>
 </html>

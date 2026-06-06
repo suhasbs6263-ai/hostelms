@@ -268,7 +268,7 @@ if (!function_exists('fetch_courses')) {
         $shortColumn = $schema['short'];
 
         $courses = [];
-        $result = $mysqli->query("SELECT `{$fullColumn}` AS course_fn, `{$shortColumn}` AS course_sn FROM `courses` ORDER BY `{$fullColumn}` ASC");
+        $result = $mysqli->query("SELECT id, `{$fullColumn}` AS course_fn, `{$shortColumn}` AS course_sn FROM `courses` ORDER BY `{$fullColumn}` ASC");
 
         if ($result) {
             while ($row = $result->fetch_assoc()) {

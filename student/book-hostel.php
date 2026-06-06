@@ -1,139 +1,54 @@
 <?php
-session_start();
 require_once('../includes/dbconn.php');
 require_once('../includes/check-login.php');
-require_once('../includes/course-helpers.php');
 require_once('../includes/room-helpers.php');
-check_login();
+require_once('../includes/student-helpers.php');
+require_once('../includes/security-helpers.php');
+check_login('student');
 
 $portalRole = 'student';
 $activePage = 'book-hostel.php';
-$pageHeading = 'Book Hostel';
-$studentEmail = $_SESSION['login'];
-
+$pageHeading = 'Apply for Hostel Room';
 $message = '';
 $messageType = 'success';
 
-$rooms = fetch_bookable_rooms($mysqli);
+$studentId = current_user_id();
+$student = fetch_student_by_id($mysqli, $studentId);
+$rooms = fetch_available_rooms($mysqli);
+$latestRequest = fetch_latest_student_request($mysqli, $studentId);
+$allocation = fetch_student_allocation($mysqli, $studentId);
 
-$courses = fetch_courses($mysqli);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
+    require_valid_csrf('student_room_request');
 
-$existingBooking = null;
-$bookingStmt = $mysqli->prepare("SELECT * FROM registration WHERE emailid = ? LIMIT 1");
-$bookingStmt->bind_param('s', $studentEmail);
-$bookingStmt->execute();
-$bookingResult = $bookingStmt->get_result();
-if ($bookingResult) {
-    $existingBooking = $bookingResult->fetch_assoc();
-}
-$bookingStmt->close();
+    $result = submit_room_request($mysqli, $studentId, [
+        'preferred_room_id' => $_POST['preferred_room_id'] ?? '',
+        'stay_from' => $_POST['stay_from'] ?? '',
+        'duration_months' => $_POST['duration_months'] ?? '',
+        'food_status' => $_POST['food_status'] ?? '0',
+        'requested_notes' => $_POST['requested_notes'] ?? '',
+    ]);
 
-if (isset($_POST['submit'])) {
-    if ($existingBooking) {
-        $message = 'You have already booked a hostel room.';
-        $messageType = 'warning';
+    if ($result['ok']) {
+        $message = 'Room request submitted successfully. Please wait for admin allocation.';
+        $latestRequest = fetch_latest_student_request($mysqli, $studentId);
     } else {
-        $roomno = trim($_POST['room']);
-        $foodstatus = trim($_POST['foodstatus']);
-        $stayfrom = trim($_POST['stayf']);
-        $duration = trim($_POST['duration']);
-        $course = trim($_POST['course']);
-        $regno = trim($_POST['regno']);
-        $fname = trim($_POST['fname']);
-        $mname = trim($_POST['mname']);
-        $lname = trim($_POST['lname']);
-        $gender = trim($_POST['gender']);
-        $contactno = trim($_POST['contact']);
-        $emailid = trim($_POST['email']);
-        $emcntno = trim($_POST['econtact']);
-        $gname = trim($_POST['gname']);
-        $grelation = trim($_POST['grelation']);
-        $gcontact = trim($_POST['gcontact']);
-        $caddress = trim($_POST['address']);
-        $ccity = trim($_POST['city']);
-        $cpincode = trim($_POST['pincode']);
-        $paddress = trim($_POST['paddress']);
-        $pcity = trim($_POST['pcity']);
-        $ppincode = trim($_POST['ppincode']);
-
-        $roomDetails = get_room_capacity($mysqli, $roomno);
-
-        if (!$roomDetails) {
-            $message = 'Selected room does not exist.';
-            $messageType = 'danger';
-        } elseif ($roomDetails['available_seats'] <= 0) {
-            $message = 'Selected room is already full. Please choose another room.';
-            $messageType = 'danger';
-            $rooms = fetch_bookable_rooms($mysqli);
-        } else {
-            $seater = (string) $roomDetails['seater'];
-            $feespm = (string) $roomDetails['fees'];
-            $query = "INSERT INTO registration (
-                roomno, seater, feespm, foodstatus, stayfrom, duration, course, regno,
-                firstName, middleName, lastName, gender, contactno, emailid, egycontactno,
-                guardianName, guardianRelation, guardianContactno, corresAddress, corresCity,
-                corresPincode, pmntAddress, pmntCity, pmntPincode
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-            $stmt = $mysqli->prepare($query);
-            $types = str_repeat('s', 24);
-            $stmt->bind_param(
-                $types,
-                $roomno,
-                $seater,
-                $feespm,
-                $foodstatus,
-                $stayfrom,
-                $duration,
-                $course,
-                $regno,
-                $fname,
-                $mname,
-                $lname,
-                $gender,
-                $contactno,
-                $emailid,
-                $emcntno,
-                $gname,
-                $grelation,
-                $gcontact,
-                $caddress,
-                $ccity,
-                $cpincode,
-                $paddress,
-                $pcity,
-                $ppincode
-            );
-
-            if ($stmt->execute()) {
-                header('Location: room-details.php?success=1');
-                exit;
-            }
-
-            $message = 'Unable to complete hostel booking.';
-            $messageType = 'danger';
-            $stmt->close();
-        }
+        $message = $result['errors']['general'] ?? 'Please correct the highlighted fields and try again.';
+        $messageType = 'danger';
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html dir="ltr" lang="en">
 <head>
-
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <link rel="icon" type="image/png" sizes="16x16" href="../assets/images/logos/favicon.png">
-
-<title>Book Hostel | Hostel Management System</title>
+<title>Apply for Hostel Room | Hostel Management System</title>
 <link href="../assets/css/styles.min.css" rel="stylesheet">
-<link href="../assets/css/hostel-custom.css?v=20260402b" rel="stylesheet">
-
+<link href="../assets/css/hostel-custom.css?v=20260509a" rel="stylesheet">
 </head>
-
 <body>
 <div class="page-wrapper" id="main-wrapper" data-layout="vertical" data-sidebar-position="fixed" data-header-position="fixed" data-sidebartype="full">
 <aside class="left-sidebar">
@@ -145,377 +60,93 @@ if (isset($_POST['submit'])) {
 </header>
 <div class="container-fluid">
 <div class="hostel-page-header">
-<h3 class="mb-1">Hostel Booking Form</h3>
-<p class="mb-0 text-dark">Fill in all details to request room allocation.</p>
+<h3 class="mb-1">Hostel Room Application</h3>
+<p class="mb-0 text-dark">Submit a room request after your account is approved. The admin will allocate a bed based on availability.</p>
 </div>
 <?php if ($message !== ''): ?>
-<div class="alert alert-<?php echo $messageType; ?>"><?php echo htmlspecialchars($message); ?></div>
-<?php endif; ?>
-<?php if ($existingBooking): ?>
-<div class="alert alert-primary">You have already booked room <strong><?php echo htmlspecialchars($existingBooking['roomno']); ?></strong>. <a href="room-details.php" class="alert-link">View room details</a>.</div>
-<?php endif; ?>
-<?php if (!$existingBooking && !$rooms): ?>
-<div class="alert alert-warning">No rooms currently have free seats. Please contact the admin or add more rooms first.</div>
-<?php endif; ?>
-<?php if (!$existingBooking && $rooms): ?>
-<div class="alert alert-light border">Rooms stay available until all seats are filled. Choose any room that still has seats left.</div>
+<div class="alert alert-<?php echo $messageType; ?>"><?php echo e($message); ?></div>
 <?php endif; ?>
 
-<form method="POST">
-
-<div class="row">
-
-<!-- Room -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Room No</label>
-<select name="room" id="room" class="form-select" onChange="getSeater(this.value);" onBlur="checkAvailability();" required <?php echo ($existingBooking || !$rooms) ? 'disabled' : ''; ?>>
-<option value="">Select room</option>
-<?php foreach ($rooms as $room): ?>
-<option value="<?php echo htmlspecialchars($room['room_no']); ?>">Room <?php echo htmlspecialchars($room['room_no']); ?> - <?php echo htmlspecialchars((string) $room['booked_count']); ?>/<?php echo htmlspecialchars((string) $room['seater']); ?> occupied, <?php echo htmlspecialchars((string) $room['available_seats']); ?> left</option>
-<?php endforeach; ?>
-</select>
-<span id="room-availability-status" class="small"></span>
-</div>
-</div>
-</div>
-
-<!-- Seater -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Seater</label>
-<input type="number" id="seater" name="seater" class="form-control" readonly required>
-</div>
-</div>
-</div>
-
-<!-- Fees -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Fees</label>
-<input type="number" id="fpm" name="fpm" class="form-control" readonly required>
-</div>
-</div>
-</div>
-
-<!-- Food -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Food Status</label>
-<select name="foodstatus" id="foodstatus" class="form-select" onchange="updateAmount();">
-<option value="1">With Food</option>
-<option value="0">Without Food</option>
-</select>
-</div>
-</div>
-</div>
-
-<!-- Stay -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Stay From</label>
-<input type="date" name="stayf" class="form-control" required>
-</div>
-</div>
-</div>
-
-<!-- Duration -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Duration</label>
-<select name="duration" id="duration" class="form-select" onchange="updateAmount();" required>
-<option value="">Choose...</option>
-<?php for ($month = 1; $month <= 12; $month++): ?>
-<option value="<?php echo $month; ?>"><?php echo $month; ?> Month</option>
-<?php endfor; ?>
-</select>
-</div>
-</div>
-</div>
-
-<!-- Course -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Course</label>
-<?php if ($courses): ?>
-<select name="course" class="form-select" required>
-<option value="">Choose course</option>
-<?php foreach ($courses as $course): ?>
-<option value="<?php echo htmlspecialchars($course['course_fn']); ?>"><?php echo htmlspecialchars($course['course_fn']); ?> (<?php echo htmlspecialchars($course['course_sn']); ?>)</option>
-<?php endforeach; ?>
-</select>
+<?php if (!$student || ($student['status'] ?? 'pending') !== 'approved'): ?>
+<div class="alert alert-warning">Your account is not approved yet. Hostel room requests are enabled only after admin approval.</div>
+<?php elseif ($allocation): ?>
+<div class="alert alert-success">You already have an active room allocation. <a class="alert-link" href="room-details.php">View room details</a>.</div>
 <?php else: ?>
-<input type="text" name="course" class="form-control" required>
+  <?php if ($latestRequest && ($latestRequest['status'] ?? '') === 'pending'): ?>
+  <div class="alert alert-info">Your previous room request is pending admin review. You cannot submit another request until it is processed.</div>
+  <?php elseif ($latestRequest && ($latestRequest['status'] ?? '') === 'rejected'): ?>
+  <div class="alert alert-danger">Your previous room request was rejected. You may submit a fresh request below. <?php if (!empty($latestRequest['admin_remarks'])): ?><br><strong>Admin remarks:</strong> <?php echo e($latestRequest['admin_remarks']); ?><?php endif; ?></div>
+  <?php endif; ?>
+  <?php if (!$rooms): ?>
+  <div class="alert alert-warning">No rooms with free beds are available right now. Please check again later or contact the hostel office.</div>
+  <?php endif; ?>
+
+  <div class="row">
+    <div class="col-lg-4">
+      <div class="card content-card h-100">
+        <div class="card-body">
+          <h4 class="card-title mb-3">Student Snapshot</h4>
+          <p class="mb-2"><strong>Name:</strong> <?php echo e(student_full_name($student)); ?></p>
+          <p class="mb-2"><strong>Reg No:</strong> <?php echo e($student['registration_number']); ?></p>
+          <p class="mb-2"><strong>Email:</strong> <?php echo e($student['email']); ?></p>
+          <p class="mb-0"><strong>Phone:</strong> <?php echo e($student['phone']); ?></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-8 mt-4 mt-lg-0">
+      <div class="card content-card">
+        <div class="card-body">
+          <form method="POST">
+            <?php echo csrf_input('student_room_request'); ?>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Preferred Room</label>
+                <select name="preferred_room_id" class="form-select" required <?php echo (($latestRequest && ($latestRequest['status'] ?? '') === 'pending') || !$rooms) ? 'disabled' : ''; ?>>
+                  <option value="">Choose room</option>
+                  <?php foreach ($rooms as $room): ?>
+                  <option value="<?php echo (int) $room['id']; ?>">
+                    Room <?php echo e($room['room_no']); ?> | <?php echo e($room['room_type']); ?> | <?php echo (int) $room['available_beds']; ?> beds left | Rs. <?php echo number_format((float) $room['fees'], 2); ?>
+                  </option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Stay From</label>
+                <input type="date" name="stay_from" class="form-control" min="<?php echo date('Y-m-d'); ?>" required <?php echo (($latestRequest && ($latestRequest['status'] ?? '') === 'pending') || !$rooms) ? 'disabled' : ''; ?>>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Duration (Months)</label>
+                <input type="number" name="duration_months" class="form-control" min="1" max="24" value="6" required <?php echo (($latestRequest && ($latestRequest['status'] ?? '') === 'pending') || !$rooms) ? 'disabled' : ''; ?>>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Food Preference</label>
+                <select name="food_status" class="form-select" <?php echo (($latestRequest && ($latestRequest['status'] ?? '') === 'pending') || !$rooms) ? 'disabled' : ''; ?>>
+                  <option value="1">With Food</option>
+                  <option value="0">Without Food</option>
+                </select>
+              </div>
+              <div class="col-md-8">
+                <label class="form-label">Notes for Admin</label>
+                <textarea name="requested_notes" class="form-control" rows="3" placeholder="Any preference or hostel note" <?php echo (($latestRequest && ($latestRequest['status'] ?? '') === 'pending') || !$rooms) ? 'disabled' : ''; ?>></textarea>
+              </div>
+            </div>
+            <div class="d-flex justify-content-end mt-4">
+              <button type="submit" name="submit" class="btn btn-primary" <?php echo (($latestRequest && ($latestRequest['status'] ?? '') === 'pending') || !$rooms) ? 'disabled' : ''; ?>>Submit Room Request</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 <?php endif; ?>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Total Amount</label>
-<input type="text" id="ta" class="form-control" readonly>
-</div>
-</div>
-</div>
-
-<!-- Student Info -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Reg No</label>
-<input type="text" name="regno" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>First Name</label>
-<input type="text" name="fname" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Middle Name</label>
-<input type="text" name="mname" class="form-control">
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Last Name</label>
-<input type="text" name="lname" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Gender</label>
-<select name="gender" class="form-select" required>
-<option value="">Select gender</option>
-<option value="Male">Male</option>
-<option value="Female">Female</option>
-<option value="Others">Others</option>
-</select>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Contact</label>
-<input type="text" name="contact" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Email</label>
-<input type="email" name="email" class="form-control" value="<?php echo htmlspecialchars($studentEmail); ?>" readonly required>
-</div>
-</div>
-</div>
-
-<!-- Guardian -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Emergency Contact</label>
-<input type="text" name="econtact" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Guardian Name</label>
-<input type="text" name="gname" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Relation</label>
-<input type="text" name="grelation" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Guardian Contact</label>
-<input type="text" name="gcontact" class="form-control" required>
-</div>
-</div>
-</div>
-
-<!-- Address -->
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Address</label>
-<input type="text" name="address" id="address" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>City</label>
-<input type="text" name="city" id="city" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Pincode</label>
-<input type="text" name="pincode" id="pincode" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-12">
-<div class="card content-card">
-<div class="card-body">
-<div class="form-check">
-<input class="form-check-input" type="checkbox" value="1" id="adcheck" name="adcheck">
-<label class="form-check-label" for="adcheck">My permanent address is same as current address</label>
-</div>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Permanent Address</label>
-<input type="text" name="paddress" id="paddress" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Permanent City</label>
-<input type="text" name="pcity" id="pcity" class="form-control" required>
-</div>
-</div>
-</div>
-
-<div class="col-md-4">
-<div class="card content-card">
-<div class="card-body">
-<label>Permanent Pincode</label>
-<input type="text" name="ppincode" id="ppincode" class="form-control" required>
-</div>
-</div>
-</div>
-
-</div>
-
-<div class="mt-4 text-center">
-<button name="submit" class="btn btn-primary" <?php echo ($existingBooking || !$rooms) ? 'disabled' : ''; ?>>Book Hostel</button>
-</div>
-
-</form>
 
 <?php include('../includes/footer.php'); ?>
 </div>
 </div>
-
+</div>
 <script src="../assets/libs/jquery/dist/jquery.min.js"></script>
 <script src="../assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="../assets/js/sidebarmenu.js"></script>
 <script src="../assets/js/app.min.js"></script>
-<script>
-function getSeater(val) {
-  if (!val) {
-    $('#seater').val('');
-    $('#fpm').val('');
-    $('#ta').val('');
-    return;
-  }
-
-  $.ajax({
-    type: "POST",
-    url: "get-seater.php",
-    data: { roomid: val },
-    success: function(data) {
-      $('#seater').val(data);
-    }
-  });
-
-  $.ajax({
-    type: "POST",
-    url: "get-seater.php",
-    data: { rid: val },
-    success: function(data) {
-      $('#fpm').val(data);
-      updateAmount();
-    }
-  });
-}
-
-function checkAvailability() {
-  $.ajax({
-    url: "check-availability.php",
-    type: "POST",
-    data: { roomno: $("#room").val() },
-    success: function(data) {
-      $("#room-availability-status").html(data);
-    }
-  });
-}
-
-function updateAmount() {
-  var fees = parseFloat($("#fpm").val() || 0);
-  var duration = parseFloat($("#duration").val() || 0);
-  var foodStatus = $("#foodstatus").val();
-  var total = fees * duration;
-
-  if (foodStatus === "1") {
-    total += 211 * duration;
-  }
-
-  $("#ta").val(total > 0 ? total.toFixed(2) : "");
-}
-
-$('#adcheck').on('change', function() {
-  if ($(this).is(':checked')) {
-    $('#paddress').val($('#address').val());
-    $('#pcity').val($('#city').val());
-    $('#ppincode').val($('#pincode').val());
-  }
-});
-</script>
-
 </body>
 </html>

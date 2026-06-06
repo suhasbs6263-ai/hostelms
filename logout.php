@@ -1,7 +1,6 @@
 <?php
-session_start();
-session_unset();
-session_destroy();
-header('Location: index.php');
-exit;
+require_once('includes/auth-helpers.php');
+
+logout_current_user();
+safe_redirect('index.php');
 ?>

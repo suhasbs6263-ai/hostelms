@@ -27,14 +27,43 @@
     var dataRows = initialRows.filter(function (row) {
       return !row.classList.contains('empty-row');
     });
+    var headerCells = table.tHead && table.tHead.rows.length
+      ? Array.prototype.slice.call(table.tHead.rows[0].cells)
+      : [];
+    var headerLabels = headerCells.map(function (cell) {
+      return cell.textContent.trim();
+    });
     var pageSize = parseInt(container.getAttribute('data-page-size'), 10) || 5;
     var page = 1;
     var searchText = '';
     var renumber = container.getAttribute('data-renumber') === 'true';
     var emptyMessage = container.getAttribute('data-empty-message') || 'No entries found';
+    var sortState = {
+      index: null,
+      direction: 'asc'
+    };
 
     var tableId = table.id || ('hostel-table-' + Math.random().toString(36).slice(2, 9));
     table.id = tableId;
+
+    function applyCellLabels(row) {
+      Array.prototype.slice.call(row.cells).forEach(function (cell, index) {
+        cell.setAttribute('data-label', headerLabels[index] || '');
+      });
+    }
+
+    dataRows.forEach(applyCellLabels);
+
+    headerCells.forEach(function (cell, index) {
+      if (!headerLabels[index] || cell.hasAttribute('data-no-sort')) {
+        return;
+      }
+
+      cell.classList.add('sortable');
+      cell.setAttribute('role', 'button');
+      cell.setAttribute('tabindex', '0');
+      cell.setAttribute('aria-sort', 'none');
+    });
 
     var toolbar = createElement('div', 'row align-items-center hostel-table-toolbar');
     var toolbarLeft = createElement('div', 'col-sm-12 col-md-6');
@@ -99,12 +128,59 @@
       });
     }
 
+    function normaliseSortValue(value) {
+      var cleaned = value.replace(/Rs\.|,/g, '').trim();
+      var numberValue = parseFloat(cleaned);
+
+      if (cleaned !== '' && !Number.isNaN(numberValue) && /^-?\d+(\.\d+)?$/.test(cleaned)) {
+        return numberValue;
+      }
+
+      return value.trim().toLowerCase();
+    }
+
+    function sortRows(rows) {
+      if (sortState.index === null) {
+        return rows;
+      }
+
+      return rows.slice().sort(function (a, b) {
+        var aCell = a.cells[sortState.index];
+        var bCell = b.cells[sortState.index];
+        var aValue = normaliseSortValue(aCell ? aCell.textContent : '');
+        var bValue = normaliseSortValue(bCell ? bCell.textContent : '');
+
+        if (aValue < bValue) {
+          return sortState.direction === 'asc' ? -1 : 1;
+        }
+
+        if (aValue > bValue) {
+          return sortState.direction === 'asc' ? 1 : -1;
+        }
+
+        return 0;
+      });
+    }
+
+    function updateSortHeaders() {
+      headerCells.forEach(function (cell, index) {
+        cell.classList.remove('sort-asc', 'sort-desc');
+        cell.setAttribute('aria-sort', 'none');
+
+        if (sortState.index === index) {
+          cell.classList.add(sortState.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+          cell.setAttribute('aria-sort', sortState.direction === 'asc' ? 'ascending' : 'descending');
+        }
+      });
+    }
+
     function render() {
       removeGeneratedEmptyRows();
 
       var filteredRows = dataRows.filter(function (row) {
         return row.textContent.toLowerCase().indexOf(searchText) !== -1;
       });
+      filteredRows = sortRows(filteredRows);
       var total = filteredRows.length;
       var totalPages = Math.max(Math.ceil(total / pageSize), 1);
 
@@ -128,6 +204,7 @@
       } else {
         filteredRows.slice(startIndex, endIndex).forEach(function (row, index) {
           row.style.display = '';
+          tbody.appendChild(row);
 
           if (renumber) {
             var firstCell = row.querySelector('td');
@@ -145,6 +222,7 @@
 
       prevButton.disabled = page <= 1 || total === 0;
       nextButton.disabled = page >= totalPages || total === 0;
+      updateSortHeaders();
     }
 
     pageSizeSelect.addEventListener('change', function () {
@@ -175,6 +253,32 @@
         page += 1;
         render();
       }
+    });
+
+    headerCells.forEach(function (cell, index) {
+      if (!cell.classList.contains('sortable')) {
+        return;
+      }
+
+      function updateSort() {
+        if (sortState.index === index) {
+          sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.index = index;
+          sortState.direction = 'asc';
+        }
+
+        page = 1;
+        render();
+      }
+
+      cell.addEventListener('click', updateSort);
+      cell.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          updateSort();
+        }
+      });
     });
 
     render();

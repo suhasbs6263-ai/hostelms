@@ -1,20 +1,13 @@
 <?php
-session_start();
 require_once('../includes/dbconn.php');
 require_once('../includes/check-login.php');
+require_once('../includes/student-helpers.php');
 check_login('admin');
 
 $portalRole = 'admin';
 $activePage = 'students.php';
-$pageHeading = 'Registered Students';
-
-$students = [];
-$result = $mysqli->query("SELECT regNo, firstName, middleName, lastName, gender, contactNo, email FROM userregistration ORDER BY firstName ASC");
-if ($result) {
-    while ($row = $result->fetch_assoc()) {
-        $students[] = $row;
-    }
-}
+$pageHeading = 'Students';
+$students = fetch_all_students($mysqli);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -23,7 +16,7 @@ if ($result) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Students</title>
     <link rel="stylesheet" href="../assets/css/styles.min.css">
-    <link rel="stylesheet" href="../assets/css/hostel-custom.css?v=20260402b">
+    <link rel="stylesheet" href="../assets/css/hostel-custom.css?v=20260509a">
 </head>
 <body>
 <div class="page-wrapper" id="main-wrapper" data-layout="vertical" data-sidebar-position="fixed" data-header-position="fixed" data-sidebartype="full">
@@ -36,51 +29,63 @@ if ($result) {
         </header>
         <div class="container-fluid">
             <div class="hostel-page-header">
-                <h3 class="mb-1">Student's Account</h3>
+                <h3 class="mb-1">Student Accounts</h3>
+                <p class="mb-0 text-dark">Track every student, approval status, contact record, and course association in one place.</p>
             </div>
             <div class="card content-card">
                 <div class="card-body">
-                    <div class="hostel-datatable" data-page-size="5" data-renumber="true" data-empty-message="No student accounts found">
-                    <div class="table-responsive">
-                        <table class="table align-middle compact-table js-hostel-table">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Reg No</th>
-                                    <th>Student Name</th>
-                                    <th>Gender</th>
-                                    <th>Contact</th>
-                                    <th>Email</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if ($students): ?>
-                                <?php foreach ($students as $index => $student): ?>
-                                <tr>
-                                    <td><?php echo $index + 1; ?></td>
-                                    <td><?php echo htmlspecialchars($student['regNo']); ?></td>
-                                    <td><?php echo htmlspecialchars(trim($student['firstName'] . ' ' . $student['middleName'] . ' ' . $student['lastName'])); ?></td>
-                                    <td><?php echo htmlspecialchars($student['gender']); ?></td>
-                                    <td><?php echo htmlspecialchars($student['contactNo']); ?></td>
-                                    <td><?php echo htmlspecialchars($student['email']); ?></td>
-                                    <td>
-                                        <div class="action-icon-group">
-                                            <a class="action-icon-btn" href="mailto:<?php echo rawurlencode($student['email']); ?>" title="Email Student">
-                                                <i class="ti ti-mail"></i>
-                                            </a>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                                <?php else: ?>
-                                <tr class="empty-row">
-                                    <td colspan="7" class="text-center py-4">No student accounts found</td>
-                                </tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
+                    <div class="hostel-datatable" data-page-size="10" data-renumber="true" data-empty-message="No student accounts found">
+                        <div class="table-responsive">
+                            <table class="table align-middle compact-table js-hostel-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Reg No</th>
+                                        <th>Student Name</th>
+                                        <th>Status</th>
+                                        <th>Course</th>
+                                        <th>Contact</th>
+                                        <th>Address</th>
+                                        <th>Approval</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if ($students): ?>
+                                    <?php foreach ($students as $index => $student): ?>
+                                    <tr>
+                                        <td><?php echo $index + 1; ?></td>
+                                        <td><?php echo e($student['registration_number']); ?></td>
+                                        <td>
+                                            <div class="fw-semibold"><?php echo e(student_full_name($student)); ?></div>
+                                            <div class="small text-muted"><?php echo e($student['email']); ?></div>
+                                        </td>
+                                        <td>
+                                            <?php
+                                            $status = $student['status'] ?? 'pending';
+                                            $badgeClass = $status === 'approved' ? 'success' : ($status === 'rejected' ? 'danger' : 'warning');
+                                            ?>
+                                            <span class="badge text-bg-<?php echo $badgeClass; ?>"><?php echo ucfirst($status); ?></span>
+                                        </td>
+                                        <td><?php echo e($student['course_fn'] ?? $student['course_sn'] ?? '--'); ?></td>
+                                        <td>
+                                            <div><?php echo e($student['phone']); ?></div>
+                                            <div class="small text-muted"><?php echo e($student['guardian_phone'] ?? '--'); ?></div>
+                                        </td>
+                                        <td><?php echo e(trim(($student['address_line'] ?? '') . ', ' . ($student['city'] ?? '') . ' ' . ($student['pincode'] ?? '')) ?: '--'); ?></td>
+                                        <td>
+                                            <div class="small"><?php echo e($student['approved_by_name'] ?? '--'); ?></div>
+                                            <div class="text-muted small"><?php echo e($student['approved_at'] ?? '--'); ?></div>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                    <?php else: ?>
+                                    <tr class="empty-row">
+                                        <td colspan="8" class="text-center py-4">No student accounts found</td>
+                                    </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -92,6 +97,6 @@ if ($result) {
 <script src="../assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="../assets/js/sidebarmenu.js"></script>
 <script src="../assets/js/app.min.js"></script>
-<script src="../assets/js/hostel-table.js?v=20260402b"></script>
+<script src="../assets/js/hostel-table.js?v=20260509a"></script>
 </body>
 </html>
